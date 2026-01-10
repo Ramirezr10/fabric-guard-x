@@ -1,0 +1,19 @@
+apiVersion: "k8s.cni.cncf.io/v1"
+kind: NetworkAttachmentDefinition
+metadata:
+  name: fabric-conf
+spec:
+  config: '{
+      "cniVersion": "0.3.1",
+      "name": "fabric-network",
+      "type": "macvlan",
+      "master": "eth1",
+      "mode": "bridge",
+      "ipam": {
+        "type": "host-local",
+        "subnet": "192.168.50.0/24",
+        "rangeStart": "192.168.50.100",
+        "rangeEnd": "192.168.50.200",
+        "gateway": "192.168.50.1"
+      }
+    }'

@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fabricguard-sentinel
+  labels:
+    app: sentinel
+  annotations:
+    k8s.v1.cni.cncf.io/networks: fabric-conf
+
+spec:
+  containers:
+    - name: sentinel
+      image: fabricguard-sentinel:v6
+      imagePullPolicy: Never
+      securityContext:
+        capabilities:
+          add: ["NET_ADMIN"]
+      ports:
+        - containerPort: 8000
+          name: metrics
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fabricguard-sentinel
+spec:
+  selector:
+    app: sentinel  
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000

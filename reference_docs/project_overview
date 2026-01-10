@@ -1,0 +1,101 @@
+===============================
+Phase 1: The "Hardware" Layer
+===============================
+Objective: Create a multi-node simulation of a DGX cluster with two distinct networks: Management (Standard K8s) and High-Speed Fabric (InfiniBand/Data Plane).
+
+   > What we did:
+
+        Used KinD (Kubernetes in Docker) to provision a 3-node cluster on macOS.
+
+        Created a custom Docker bridge network (fabric-net) to act as the high-speed switch.
+
+        Hot-plugged virtual cables into the nodes by connecting the Docker network to the running Kind containers.
+
+   > Hurdles & Solutions:
+
+        The Mac Sandbox: Docker on Mac doesn't expose bridge networks to the host. We bypassed this by verifying connectivity inside the containers.
+
+        Minimalist OS: The Kind nodes lacked basic networking tools. We had to manually install iputils-ping via apt-get to verify our "cables" were working.
+
+=================================
+Phase 2: The "Plumbing" Layer
+=================================
+Objective: Bridge the gap between the Linux host interfaces (eth1) and the Kubernetes Pods.
+
+   > What we did:
+
+        Deployed Multus CNI, a "meta-plugin" that allows Pods to have multiple network interfaces.
+
+        Configured a NetworkAttachmentDefinition (NAD) to map the host's eth1 to a Pod's net1 using the macvlan driver.
+
+   > Hurdles & Solutions:
+
+        The Missing Binary: This was the biggest roadblock. Multus was ready, but the actual macvlan execution file was missing from /opt/cni/bin on the nodes.
+
+        Injection Scripting: We encountered "Standard Input (stdin) stealing" where a bash loop failed because docker exec was consuming the node list. We fixed this by providing a clean, targeted injection script to provide the CNI binaries to all workers.
+
+        The Success Metric: We successfully launched dgx-sim-pod which shows two distinct IP ranges: 10.244.x.x (Internal K8s) and 192.168.50.100 (Fabric).
+
+===============================================
+Phase 3: The "Sentinel" (Observability) Layer
+===============================================
+Objective: Develop a custom monitoring agent to detect "Silent Drops" on the high-speed fabric and export them as Prometheus metrics.
+
+   > What we did:
+
+        Wrote a Python Sentinel Agent using the prometheus_client library to scrape kernel-level statistics from /proc/net/dev.
+
+        Containerized the agent using a python:3.9-slim base and deployed it as a Pod (fabricguard-sentinel) with a secondary interface on the fabric network.
+
+        Exposed a Prometheus metrics endpoint on port 8000 to serve real-time data to the cluster.
+
+   > Hurdles & Solutions:
+
+        The "Slim Image" Curse: The initial Python image lacked basic networking tools (ip, ping). We evolved the Dockerfile to a "Super Sentinel" (v4) that included iproute2 and iputils-ping for in-container diagnostics.
+
+        Ghost Images: KinD nodes were caching old versions of the image. We implemented Version Pinning (v4) and added a Marker File (/etc/is_v4_sentinel) to verify the correct code was actually running.
+
+        Port Collision: Local macOS processes occupied port 8000. We pivoted to Dynamic Port Forwarding (8080:8000) to access the metrics from the host browser.
+
+=================================================
+Phase 4: The "Chaos" (Failure Injection) Layer
+=================================================
+Objective: Prove the monitoring pipeline works by manually degrading the fabric and verifying the Sentinel detects the failure.
+
+    What we did:
+
+        Used Traffic Control (tc) with the Network Emulator (netem) module to simulate a 25% packet loss on the net1 interface.
+
+        Performed Synthetic Load Generation using flood pings with maximum MTU payloads (-s 65000) to stress the simulated fabric.
+
+        Verified the "Silent Failure" via the Sentinel’s metrics, moving from a healthy 0.0 state to an active error state.
+
+    Hurdles & Solutions:
+
+        Access Denied: Even as root, the container couldn't modify the network. We solved this by adding CAP_NET_ADMIN to the Pod's securityContext capabilities, granting the necessary Linux permissions.
+
+        The "noqueue" Bypass: Virtual interfaces default to a noqueue state, which ignores traditional drop limits. We manually swapped the queuing discipline to pfifo to force the kernel to respect our simulated hardware limits.
+
+        Kernel Reporting Lag: Standard /proc/net/dev counters in Docker sometimes mask software-induced drops. We utilized tc -s qdisc to confirm the drops were occurring at the egress layer, successfully closing the "Detection Loop."
+
+====================================================
+Phase 5: The "Command Center" (Observability) Layer
+====================================================
+Objective: Transform raw, invisible kernel telemetry into a professional, real-time SRE dashboard for a DGX SuperPOD
+
+     What we did:
+
+          Deployed a complete Monitoring Stack consisting of Prometheus (the database) and Grafana (the visualization engine) within the KinD cluster.
+
+         Configured a Prometheus Scrape Job to target the Sentinel Agent every 5 seconds, enabling high-resolution detection of transient network failures.
+
+         Built a "Fabric Health" Dashboard in Grafana using Time Series visualizations and threshold-based color logic (Green = Healthy, Red = Alert).
+
+    Hurdles & Solutions:
+
+         The Bind Address Trap: The Sentinel was initially listening on 127.0.0.1 (localhost), which blocked external traffic from the Prometheus pod. We re-engineered the agent (v5) to bind to 0.0.0.0, opening the "door" for cluster-wide metric collection.
+
+         The Service Discovery Gap: Prometheus couldn't find the Sentinel because the Service "Endpoints" were empty. We debugged this by aligning the Kubernetes Label Selectors (app: sentinel) between the Pod and the Service, successfully building the network bridge.
+
+         The Sampling Aliasing: Short-lived network events were occurring between Prometheus scrape intervals, making them "invisible" on the graph. We implemented Synthetic Injection (v6) to force a constant failure state (125.0), validating that the entire pipeline—from kernel to dashboard—triggers a critical Red alert.
+
