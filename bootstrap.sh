@@ -44,6 +44,7 @@ done
 
 echo "Applying Network Attachment Definitions..."
 kubectl apply -f k8s/fabric-network.yaml
+kubectl apply -f k8s/dgx-sim-pod.yaml
 
 # 4. Application & Observability Layer
 echo "Loading Sentinel v6 Image into KinD..."
