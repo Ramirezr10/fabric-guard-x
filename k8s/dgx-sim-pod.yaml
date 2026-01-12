@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dgx-sim-pod
+  annotations:
+    k8s.v1.cni.cncf.io/networks: fabric-conf
+spec:
+  containers:
+  - name: network-tester
+    image: nicolaka/netshoot  
+    command: ["tail", "-f", "/dev/null"] 
+    securityContext:
+      capabilities:
+        add: ["NET_ADMIN"] 

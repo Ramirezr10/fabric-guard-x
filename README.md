@@ -111,7 +111,7 @@ Prerequisites
     kubectl
 
 Deploy the Fabric
-Bash
+
 
 # Example command to inject the CNI binaries
 docker exec -i kind-worker /bin/bash -c "cat > /opt/cni/bin/macvlan" < ./bin/macvlan
@@ -120,7 +120,7 @@ chmod +x /opt/cni/bin/macvlan
 Accessing the Dashboard
 
     Port-forward the Grafana service:
-    Bash
+   
 
     kubectl port-forward svc/grafana 3000:3000
 
