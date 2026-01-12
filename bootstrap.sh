@@ -42,6 +42,9 @@ for node in $(kind get nodes --name "$CLUSTER_NAME"); do
     docker cp binaries/macvlan "$node":/opt/cni/bin/
 done
 
+echo "Waiting for Multus DaemonSet to stabilize..."
+kubectl rollout status daemonset kube-multus-ds -n kube-system --timeout=60s
+
 echo "Applying Network Attachment Definitions..."
 kubectl apply -f k8s/fabric-network.yaml
 kubectl apply -f k8s/dgx-sim-pod.yaml
